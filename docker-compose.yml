@@ -1,0 +1,81 @@
+version: '3.8'
+
+services:
+  database:
+    image: mysql:8.0
+    container_name: travel-db
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
+      MYSQL_DATABASE: ${MYSQL_DATABASE}
+      MYSQL_USER: ${MYSQL_USER}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD}
+    volumes:
+      - ./mysql/init.sql:/docker-entrypoint-initdb.d/init.sql
+      - db_data:/var/lib/mysql
+    networks:
+      - travel-network
+    healthcheck:
+      test: ["CMD", "mysqladmin" ,"ping", "-h", "localhost"]
+      timeout: 20s
+      retries: 10
+
+  auth-service:
+    build: ./auth-service
+    container_name: auth-service
+    depends_on:
+      database:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: ${DATABASE_URL}
+      JWT_SECRET: ${JWT_SECRET}
+      JWT_ALGORITHM: ${JWT_ALGORITHM}
+      ACCESS_TOKEN_EXPIRE_MINUTES: ${ACCESS_TOKEN_EXPIRE_MINUTES}
+    networks:
+      - travel-network
+
+  travel-service:
+    build: ./travel-service
+    container_name: travel-service
+    depends_on:
+      database:
+        condition: service_healthy
+      auth-service:
+        condition: service_started
+    environment:
+      DATABASE_URL: ${DATABASE_URL}
+    networks:
+      - travel-network
+
+  schedule-service:
+    build: ./schedule-service
+    container_name: schedule-service
+    depends_on:
+      database:
+        condition: service_healthy
+      auth-service:
+        condition: service_started
+      travel-service:
+        condition: service_started
+    environment:
+      DATABASE_URL: ${DATABASE_URL}
+    networks:
+      - travel-network
+
+  frontend:
+    build: ./frontend
+    container_name: travel-frontend
+    ports:
+      - "8080:80"
+    depends_on:
+      - auth-service
+      - travel-service
+      - schedule-service
+    networks:
+      - travel-network
+
+networks:
+  travel-network:
+    driver: bridge
+
+volumes:
+  db_data:
