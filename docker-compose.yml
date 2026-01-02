@@ -101,6 +101,8 @@ services:
     environment:
       MONGO_URL: mongodb://user:password@mongodb:27017
       KAFKA_BOOTSTRAP_SERVERS: kafka:29092
+    volumes:
+      - ./image/recommended_image:/app/images
     networks:
       - travel-network
 

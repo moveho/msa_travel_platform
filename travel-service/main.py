@@ -60,12 +60,14 @@ def get_current_user(authorization: Optional[str] = Header(None)):
 class TravelCreate(BaseModel):
     title: str
     description: Optional[str] = None
+    image_url: Optional[str] = None
 
 class TravelResponse(BaseModel):
     id: str
     user_id: str
     title: str
     description: Optional[str]
+    image_url: Optional[str]
 
 # Routes
 @app.post("/travels", response_model=TravelResponse)
@@ -74,6 +76,7 @@ async def create_travel(travel: TravelCreate, user: dict = Depends(get_current_u
         "user_id": user['user_id'],
         "title": travel.title,
         "description": travel.description,
+        "image_url": travel.image_url,
         "username": user['username'] # Added for recommendation display
     }
     
@@ -86,7 +89,16 @@ async def create_travel(travel: TravelCreate, user: dict = Depends(get_current_u
     # Publish to Kafka
     try:
         if producer:
-            message = json.dumps(created_travel).encode("utf-8")
+            # Create a copy for Kafka message to avoid ObjectId serialization error
+            kafka_message = {
+                "id": str(result.inserted_id),
+                "user_id": new_travel["user_id"],
+                "title": new_travel["title"],
+                "description": new_travel["description"],
+                "image_url": new_travel.get("image_url"),
+                "username": new_travel["username"]
+            }
+            message = json.dumps(kafka_message).encode("utf-8")
             await producer.send_and_wait("travel-topic", message)
     except Exception as e:
         print(f"Failed to publish to Kafka: {e}")
@@ -102,7 +114,8 @@ async def read_travels(user: dict = Depends(get_current_user)):
             "id": str(doc["_id"]),
             "user_id": doc["user_id"],
             "title": doc["title"],
-            "description": doc.get("description")
+            "description": doc.get("description"),
+            "image_url": doc.get("image_url")
         })
     return travels
 
@@ -118,7 +131,8 @@ async def read_all_travels(user: dict = Depends(get_current_user)):
             "id": str(doc["_id"]),
             "user_id": doc["user_id"],
             "title": doc["title"],
-            "description": doc.get("description")
+            "description": doc.get("description"),
+            "image_url": doc.get("image_url")
         })
     return travels
 
@@ -142,7 +156,8 @@ async def read_travel(travel_id: str, user: dict = Depends(get_current_user)):
         "id": str(doc["_id"]),
         "user_id": doc["user_id"],
         "title": doc["title"],
-        "description": doc.get("description")
+        "description": doc.get("description"),
+        "image_url": doc.get("image_url")
     }
 
 @app.delete("/travels/{travel_id}")

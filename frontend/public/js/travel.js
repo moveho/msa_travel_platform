@@ -17,14 +17,14 @@ export async function loadTravels() {
     return [];
 }
 
-export async function createTravel(title, description) {
+export async function createTravel(title, description, imageUrl) {
     const res = await fetch(`${API_TRAVEL}/travels`, {
         method: 'POST',
         headers: {
             'Content-Type': 'application/json',
             'Authorization': `Bearer ${token}`
         },
-        body: JSON.stringify({ title, description })
+        body: JSON.stringify({ title, description, image_url: imageUrl })
     });
     return res.ok;
 }

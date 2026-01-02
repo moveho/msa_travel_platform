@@ -13,7 +13,7 @@ export async function loadSchedules(travelId) {
     return [];
 }
 
-export async function createSchedule(travelId, date, place, memo) {
+export async function createSchedule(travelId, date, time, place, memo, imageUrl) {
     const res = await fetch(`${API_SCHEDULE}/schedules`, {
         method: 'POST',
         headers: {
@@ -23,8 +23,10 @@ export async function createSchedule(travelId, date, place, memo) {
         body: JSON.stringify({
             travel_id: travelId,
             date,
+            time,
             place,
-            memo
+            memo,
+            image_url: imageUrl
         })
     });
     return res.ok;

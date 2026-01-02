@@ -27,8 +27,13 @@ async function renderTravels() {
         emptyState.classList.add('hidden');
         list.innerHTML = travels.map(t => `
             <div class="bg-white rounded-xl shadow-sm hover:shadow-lg transition duration-300 overflow-hidden border border-gray-100 flex flex-col">
-                <div class="h-32 bg-gradient-to-r from-indigo-400 to-purple-500 flex items-center justify-center">
-                    <span class="text-white text-4xl opacity-50">✈️</span>
+                <div class="h-32 bg-gray-200 relative overflow-hidden">
+                    ${t.image_url ?
+                `<img src="${t.image_url}" class="w-full h-full object-cover" alt="${t.title}">` :
+                `<div class="w-full h-full bg-gradient-to-r from-indigo-400 to-purple-500 flex items-center justify-center">
+                            <span class="text-white text-4xl opacity-50">✈️</span>
+                        </div>`
+            }
                 </div>
                 <div class="p-6 flex-grow">
                     <div class="flex justify-between items-start mb-2">
@@ -95,34 +100,51 @@ window.closeRecommendationModal = () => {
     document.getElementById('recommendation-modal').classList.add('hidden');
 };
 
-async function renderSchedules(travelId) {
+const renderSchedules = async (travelId) => {
     const schedules = await loadSchedules(travelId);
     const list = document.getElementById('schedule-list');
-    list.innerHTML = schedules.map((s, index) => `
-        <li class="relative pb-8">
-            ${index !== schedules.length - 1 ? '<span class="absolute top-4 left-4 -ml-px h-full w-0.5 bg-gray-200" aria-hidden="true"></span>' : ''}
-            <div class="relative flex space-x-3">
-                <div>
-                    <span class="h-8 w-8 rounded-full bg-indigo-500 flex items-center justify-center ring-8 ring-white">
-                        <svg class="h-5 w-5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-                        </svg>
-                    </span>
-                </div>
-                <div class="min-w-0 flex-1 pt-1.5 flex justify-between space-x-4">
+
+    // Group by Date for better visual
+    // But for now, simple timeline
+    list.innerHTML = schedules.map(s => `
+        <li>
+            <div class="relative pb-8">
+                <span class="absolute top-4 left-4 -ml-px h-full w-0.5 bg-gray-200" aria-hidden="true"></span>
+                <div class="relative flex space-x-3">
                     <div>
-                        <p class="text-sm text-gray-500">${s.date} </p>
-                        <p class="text-md font-bold text-gray-900">${s.place}</p>
-                        <p class="text-sm text-gray-600 mt-1">${s.memo || ''}</p>
+                        <span class="h-8 w-8 rounded-full bg-indigo-500 flex items-center justify-center ring-8 ring-white">
+                           <svg class="h-5 w-5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
+                              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
+                            </svg>
+                        </span>
                     </div>
-                    <div class="text-right text-sm whitespace-nowrap text-gray-500">
-                        <button data-action="delete-schedule" data-id="${s.id}" class="text-red-400 hover:text-red-600">Delete</button>
+                    <div class="min-w-0 flex-1 pt-1.5 flex justify-between space-x-4">
+                        <div class="space-y-2">
+                             <div class="flex items-center space-x-2">
+                                <p class="text-sm text-gray-500">${s.date} ${s.time ? `<span class="text-indigo-600 font-bold">${s.time}</span>` : ''}</p>
+                             </div>
+                            
+                            <div>
+                                <p class="text-md font-bold text-gray-900">${s.place}</p>
+                                ${s.memo ? `<p class="text-sm text-gray-600">${s.memo}</p>` : ''}
+                            </div>
+                            
+                            ${s.image_url ? `
+                                <div class="mt-2">
+                                    <img src="${s.image_url}" class="h-32 w-auto rounded-lg shadow-sm border border-gray-100 object-cover" alt="Schedule Image">
+                                </div>
+                            ` : ''}
+                        </div>
+                        <div class="text-right text-sm whitespace-nowrap text-gray-500">
+                             <button onclick="removeSchedule('${s.id}', '${travelId}')" class="text-red-400 hover:text-red-600">Delete</button>
+                        </div>
                     </div>
                 </div>
             </div>
         </li>
     `).join('');
-}
+};
 
 // --- Event Listeners ---
 
@@ -176,30 +198,156 @@ window.login = async () => {
 
 window.logout = logout;
 
+// Helper to read and resize image
+const processImage = (file) => {
+    return new Promise((resolve, reject) => {
+        if (!file) return resolve(null);
+
+        const reader = new FileReader();
+        reader.readAsDataURL(file);
+        reader.onload = (event) => {
+            const img = new Image();
+            img.src = event.target.result;
+            img.onload = () => {
+                try {
+                    const canvas = document.createElement('canvas');
+                    const MAX_WIDTH = 800;
+                    const MAX_HEIGHT = 600;
+                    let width = img.width;
+                    let height = img.height;
+
+                    if (width > height) {
+                        if (width > MAX_WIDTH) {
+                            height *= MAX_WIDTH / width;
+                            width = MAX_WIDTH;
+                        }
+                    } else {
+                        if (height > MAX_HEIGHT) {
+                            width *= MAX_HEIGHT / height;
+                            height = MAX_HEIGHT;
+                        }
+                    }
+
+                    canvas.width = width;
+                    canvas.height = height;
+                    const ctx = canvas.getContext('2d');
+                    ctx.drawImage(img, 0, 0, width, height);
+                    resolve(canvas.toDataURL('image/jpeg', 0.7)); // Compress to 70% quality
+                } catch (e) {
+                    reject(e);
+                }
+            };
+            img.onerror = (err) => reject(new Error("Image load failed"));
+        };
+        reader.onerror = (err) => reject(new Error("File read failed"));
+    });
+};
+
+// Generic Image Preview Logic
+window.handleFileSelect = (input) => {
+    const file = input.files[0];
+    const wrapper = input.parentElement;
+    const preview = wrapper.querySelector('img');
+    const content = wrapper.querySelector('div[id$="-content"]'); // contains 'content' in ID
+    const removeBtn = wrapper.querySelector('button');
+
+    if (file) {
+        const reader = new FileReader();
+        reader.onload = (e) => {
+            preview.src = e.target.result;
+            preview.classList.remove('hidden');
+            if (content) content.classList.add('hidden');
+            if (removeBtn) removeBtn.classList.remove('hidden');
+            wrapper.classList.add('border-indigo-500'); // Keep active border
+        };
+        reader.readAsDataURL(file);
+    }
+};
+
+// Generic Reset Logic
+window.resetUpload = (inputId) => {
+    const input = document.getElementById(inputId);
+    if (!input) return;
+
+    const wrapper = input.parentElement;
+    const preview = wrapper.querySelector('img');
+    const content = wrapper.querySelector('div[id$="-content"]');
+    const removeBtn = wrapper.querySelector('button');
+
+    input.value = '';
+    if (preview) {
+        preview.classList.add('hidden');
+        preview.src = '';
+    }
+    if (content) content.classList.remove('hidden');
+    if (removeBtn) removeBtn.classList.add('hidden');
+    wrapper.classList.remove('border-indigo-500');
+
+    // Prevent event bubbling if needed
+    if (typeof event !== 'undefined' && event) {
+        event.stopPropagation();
+    }
+};
+
 window.createTravel = async () => {
     const title = document.getElementById('travel-title').value;
     const description = document.getElementById('travel-desc').value;
+    const fileInput = document.getElementById('travel-image');
+    const file = fileInput.files[0];
+
     if (!title) return alert("Title is required");
 
-    if (await createTravel(title, description)) {
-        document.getElementById('travel-title').value = '';
-        document.getElementById('travel-desc').value = '';
-        document.getElementById('create-travel-modal').classList.add('hidden');
-        renderTravels();
+    let imageUrl = null;
+    try {
+        console.log("Processing file:", file); // Debug log
+        imageUrl = await processImage(file);
+    } catch (e) {
+        console.error("Image Processing Error:", e);
+        alert("Failed to process image: " + (e.message || e));
+        return;
+    }
+
+    try {
+        if (await createTravel(title, description, imageUrl)) {
+            document.getElementById('travel-title').value = '';
+            document.getElementById('travel-desc').value = '';
+            resetUpload('travel-image'); // New generic reset
+            document.getElementById('create-travel-modal').classList.add('hidden');
+            renderTravels();
+        } else {
+            alert("Failed to create trip (Server Error)");
+        }
+    } catch (e) {
+        console.error("API Error:", e);
+        alert("Failed to create trip (Network Error): " + e.message);
     }
 };
 
 window.createSchedule = async () => {
     const travelId = document.getElementById('current-travel-id').value;
     const date = document.getElementById('sched-date').value;
+    const time = document.getElementById('sched-time').value;
     const place = document.getElementById('sched-place').value;
     const memo = document.getElementById('sched-memo').value;
+    const fileInput = document.getElementById('sched-image');
+    const file = fileInput.files[0];
 
     if (!date || !place) return alert("Date and Place are required");
 
-    if (await createSchedule(travelId, date, place, memo)) {
+    let imageUrl = null;
+    if (file) {
+        try {
+            imageUrl = await processImage(file);
+        } catch (e) {
+            console.error(e);
+            return alert("Failed to process image");
+        }
+    }
+
+    if (await createSchedule(travelId, date, time, place, memo, imageUrl)) {
         document.getElementById('sched-place').value = '';
         document.getElementById('sched-memo').value = '';
+        resetUpload('sched-image');
         renderSchedules(travelId);
     } else {
         alert('Failed to add schedule');
