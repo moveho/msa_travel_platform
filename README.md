@@ -51,30 +51,34 @@ graph TB
 - ✅ 이미지 첨부
 - ✅ 자동 정렬 (날짜/시간순)
 
-### 4. **여행지 추천 (AI 기반)**
+### 4. **여행지 추천 (규칙 기반 점수 시스템)**
 - ✅ Wikipedia 실시간 크롤링 (2016/2018/최신 랭킹)
-- ✅ 점수 기반 추천 알고리즘
-  - Tag 매칭 (10점)
-  - Season 매칭 (20점)
-  - Travel Style 매칭 (15점)
-  - Budget 매칭 (10점)
-  - Popularity (0.1점)
-- ✅ 국가별 이미지 자동 매핑
+- ✅ **가중치 기반 추천 알고리즘**
+  - Tag 매칭: 10점 × 매칭된 태그 수
+  - Season 매칭: 20점 (계절 일치 시)
+  - Travel Style 매칭: 15점 (여행 스타일 일치 시)
+  - Budget 매칭: 10점 (예산 레벨 일치 시)
+  - Popularity 보너스: 인기도 × 0.1점
+  - **총점 계산 후 랜덤 6개 선택**
+- ✅ MongoDB Aggregation Pipeline 활용
+- ✅ 국가별 이미지 자동 매핑 (정규화 + 별칭 처리)
 - ✅ Default 이미지 폴백
 
 ---
 
 ## 🏛️ 마이크로서비스 구성
 
-| 서비스 | 역할 | 포트 | 기술 스택 |
-|--------|------|------|-----------|
-| **Frontend** | SPA + API Gateway | 8080 | Nginx, Vanilla JS, TailwindCSS |
-| **Auth Service** | JWT 발급/검증 | 8000 | FastAPI, PyJWT |
-| **User Service** | 계정 관리 | 8000 | FastAPI, Motor, bcrypt |
-| **Travel Service** | 여행 계획 CRUD | 8000 | FastAPI, Motor, Kafka |
-| **Schedule Service** | 일정 관리 | 8000 | FastAPI, Motor |
-| **Recommendation Service** | 추천 + 이미지 서빙 | 8000 | FastAPI, Motor, Kafka, BeautifulSoup |
+| 서비스 | 역할 | 포트 (내부:외부) | 기술 스택 |
+|--------|------|-----------------|-----------|
+| **Frontend** | SPA + API Gateway | 80:8080 | Nginx, Vanilla JS, TailwindCSS |
+| **Auth Service** | JWT 발급/검증 | 8000 (내부) | FastAPI, PyJWT |
+| **User Service** | 계정 관리 | 8000 (내부) | FastAPI, Motor, bcrypt |
+| **Travel Service** | 여행 계획 CRUD | 8000 (내부) | FastAPI, Motor, Kafka |
+| **Schedule Service** | 일정 관리 | 8000 (내부) | FastAPI, Motor |
+| **Recommendation Service** | 추천 + 이미지 서빙 | 8000 (내부) | FastAPI, Motor, Kafka |
 | **Crawler Service** | Wikipedia 크롤러 | - | Python, BeautifulSoup, Kafka |
+| **MongoDB** | NoSQL Database | 27017:27017 | MongoDB 6.0 |
+| **Kafka** | 메시지 브로커 | 9092:9092 (외부), 29092 (내부) | Apache Kafka |
 
 ---
 
