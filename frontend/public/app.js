@@ -1,59 +1,8 @@
-const API_AUTH = '/api/auth';
-const API_TRAVEL = '/api/travel';
-const API_SCHEDULE = '/api/schedule';
-
-let token = localStorage.getItem('token');
-
-// --- Router & Init ---
-window.addEventListener('hashchange', handleRoute);
-window.addEventListener('load', () => {
-    if (!token) {
-        window.location.hash = '#login';
-    } else {
-        // If logged in but at login/signup, go to dashboard
-        if (window.location.hash === '#login' || window.location.hash === '#signup') {
-            window.location.hash = '#dashboard';
-        } else if (!window.location.hash) {
-            window.location.hash = '#dashboard';
-        }
-    }
-    handleRoute();
-});
-
-function handleRoute() {
-    const hash = window.location.hash || '#login';
-
-    // Hide all pages
-    document.getElementById('login-page').classList.add('hidden');
-    document.getElementById('signup-page').classList.add('hidden');
-    document.getElementById('dashboard-page').classList.add('hidden');
-    document.getElementById('navbar').classList.add('hidden');
-
-    // Show active page
-    if (hash === '#login') {
-        document.getElementById('login-page').classList.remove('hidden');
-    } else if (hash === '#signup') {
-        document.getElementById('signup-page').classList.remove('hidden');
-    } else if (hash === '#dashboard') {
-        if (!token) {
-            window.location.hash = '#login';
-            return;
-        }
-        document.getElementById('dashboard-page').classList.remove('hidden');
-        document.getElementById('navbar').classList.remove('hidden');
-        loadTravels();
-        updateUserGreeting();
-    }
-}
-
-function updateUserGreeting() {
-    // Decode token to get username (simple implementation)
-    try {
-        const payload = JSON.parse(atob(token.split('.')[1]));
-        document.getElementById('user-greeting').textContent = `Hello, ${payload.sub}`;
+const payload = JSON.parse(atob(token.split('.')[1]));
+document.getElementById('user-greeting').textContent = `Hello, ${payload.sub}`;
     } catch (e) {
-        document.getElementById('user-greeting').textContent = 'Welcome';
-    }
+    document.getElementById('user-greeting').textContent = 'Welcome';
+}
 }
 
 // --- Auth Functions ---

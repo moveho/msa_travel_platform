@@ -1,40 +1,48 @@
 from fastapi import FastAPI, Depends, HTTPException, Header
-from sqlalchemy import create_engine, Column, Integer, String, Text, ForeignKey
-from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy.orm import sessionmaker, Session
-from pydantic import BaseModel
+from motor.motor_asyncio import AsyncIOMotorClient
+from pydantic import BaseModel, Field
 from typing import List, Optional
+from aiokafka import AIOKafkaProducer
 import os
 import requests
+import json
+import asyncio
 
 # Configuration
-DATABASE_URL = os.getenv("DATABASE_URL")
-AUTH_SERVICE_URL = "http://auth-service:8000/verify"
-
-# Database Setup
-engine = create_engine(DATABASE_URL)
-SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
-Base = declarative_base()
-
-# Models
-class Travel(Base):
-    __tablename__ = "travels"
-    id = Column(Integer, primary_key=True, index=True)
-    user_id = Column(Integer, nullable=False)
-    title = Column(String(100), nullable=False)
-    description = Column(Text)
+MONGO_URL = os.getenv("MONGO_URL", "mongodb://localhost:27017")
+AUTH_SERVICE_URL = os.getenv("AUTH_SERVICE_URL", "http://auth-service:8000/verify")
+KAFKA_BOOTSTRAP_SERVERS = os.getenv("KAFKA_BOOTSTRAP_SERVERS", "kafka:29092")
+DB_NAME = "travel_db"
 
 app = FastAPI()
 
-# Dependency
-def get_db():
-    db = SessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
+# DB Connection
+client = AsyncIOMotorClient(MONGO_URL)
+db = client[DB_NAME]
+travels_collection = db["travels"]
 
-# Auth Middleware (Manual for simplicity in MSA)
+# Kafka Producer
+producer = None
+
+@app.on_event("startup")
+async def startup_event():
+    global producer
+    producer = AIOKafkaProducer(bootstrap_servers=KAFKA_BOOTSTRAP_SERVERS)
+    # Retry connection logic
+    for _ in range(5):
+        try:
+            await producer.start()
+            break
+        except Exception as e:
+            print(f"Kafka connection failed: {e}. Retrying...")
+            await asyncio.sleep(2)
+
+@app.on_event("shutdown")
+async def shutdown_event():
+    if producer:
+        await producer.stop()
+
+# Auth Middleware
 def get_current_user(authorization: Optional[str] = Header(None)):
     if not authorization:
         raise HTTPException(status_code=401, detail="Authorization header missing")
@@ -44,85 +52,115 @@ def get_current_user(authorization: Optional[str] = Header(None)):
         response = requests.get(AUTH_SERVICE_URL, headers={"Authorization": f"Bearer {token}"})
         if response.status_code != 200:
             raise HTTPException(status_code=401, detail="Invalid token")
-        return response.json() # Returns {"username": "...", "user_id": ..., "role": ...}
+        return response.json()
     except requests.exceptions.RequestException:
         raise HTTPException(status_code=500, detail="Auth service unavailable")
 
-# Pydantic Models
+# Models
 class TravelCreate(BaseModel):
     title: str
     description: Optional[str] = None
 
 class TravelResponse(BaseModel):
-    id: int
-    user_id: int
+    id: str
+    user_id: str
     title: str
     description: Optional[str]
 
-    class Config:
-        orm_mode = True
-
 # Routes
 @app.post("/travels", response_model=TravelResponse)
-def create_travel(travel: TravelCreate, user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
-    new_travel = Travel(
-        user_id=user['user_id'],
-        title=travel.title,
-        description=travel.description
-    )
-    db.add(new_travel)
-    db.commit()
-    db.refresh(new_travel)
-    return new_travel
+async def create_travel(travel: TravelCreate, user: dict = Depends(get_current_user)):
+    new_travel = {
+        "user_id": user['user_id'],
+        "title": travel.title,
+        "description": travel.description,
+        "username": user['username'] # Added for recommendation display
+    }
+    
+    result = await travels_collection.insert_one(new_travel)
+    created_travel = {
+        "id": str(result.inserted_id),
+        **new_travel
+    }
+    
+    # Publish to Kafka
+    try:
+        if producer:
+            message = json.dumps(created_travel).encode("utf-8")
+            await producer.send_and_wait("travel-topic", message)
+    except Exception as e:
+        print(f"Failed to publish to Kafka: {e}")
+
+    return created_travel
 
 @app.get("/travels", response_model=List[TravelResponse])
-def read_travels(user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
-    # Show only user's travels
-    return db.query(Travel).filter(Travel.user_id == user['user_id']).all()
+async def read_travels(user: dict = Depends(get_current_user)):
+    travels = []
+    cursor = travels_collection.find({"user_id": user['user_id']})
+    async for doc in cursor:
+        travels.append({
+            "id": str(doc["_id"]),
+            "user_id": doc["user_id"],
+            "title": doc["title"],
+            "description": doc.get("description")
+        })
+    return travels
 
 @app.get("/admin/travels", response_model=List[TravelResponse])
-def read_all_travels(user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
+async def read_all_travels(user: dict = Depends(get_current_user)):
     if user.get('role') != 'admin':
         raise HTTPException(status_code=403, detail="Admin privileges required")
-    return db.query(Travel).all()
+    
+    travels = []
+    cursor = travels_collection.find({})
+    async for doc in cursor:
+        travels.append({
+            "id": str(doc["_id"]),
+            "user_id": doc["user_id"],
+            "title": doc["title"],
+            "description": doc.get("description")
+        })
+    return travels
 
 @app.get("/travels/{travel_id}", response_model=TravelResponse)
-def read_travel(travel_id: int, user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
-    # Allow admin to view any travel
-    if user.get('role') == 'admin':
-        travel = db.query(Travel).filter(Travel.id == travel_id).first()
-    else:
-        travel = db.query(Travel).filter(Travel.id == travel_id, Travel.user_id == user['user_id']).first()
-        
-    if not travel:
-        raise HTTPException(status_code=404, detail="Travel not found")
-    return travel
+async def read_travel(travel_id: str, user: dict = Depends(get_current_user)):
+    from bson import ObjectId
+    try:
+        oid = ObjectId(travel_id)
+    except:
+        raise HTTPException(status_code=400, detail="Invalid ID")
 
-@app.put("/travels/{travel_id}", response_model=TravelResponse)
-def update_travel(travel_id: int, travel_update: TravelCreate, user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
-    travel = db.query(Travel).filter(Travel.id == travel_id, Travel.user_id == user['user_id']).first()
-    if not travel:
+    query = {"_id": oid}
+    if user.get('role') != 'admin':
+        query["user_id"] = user['user_id']
+        
+    doc = await travels_collection.find_one(query)
+    if not doc:
         raise HTTPException(status_code=404, detail="Travel not found")
-    
-    travel.title = travel_update.title
-    travel.description = travel_update.description
-    db.commit()
-    db.refresh(travel)
-    return travel
+        
+    return {
+        "id": str(doc["_id"]),
+        "user_id": doc["user_id"],
+        "title": doc["title"],
+        "description": doc.get("description")
+    }
 
 @app.delete("/travels/{travel_id}")
-def delete_travel(travel_id: int, user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
-    # Allow admin to delete any travel
-    if user.get('role') == 'admin':
-        travel = db.query(Travel).filter(Travel.id == travel_id).first()
-    else:
-        travel = db.query(Travel).filter(Travel.id == travel_id, Travel.user_id == user['user_id']).first()
-        
-    if not travel:
+async def delete_travel(travel_id: str, user: dict = Depends(get_current_user)):
+    from bson import ObjectId
+    try:
+        oid = ObjectId(travel_id)
+    except:
+        raise HTTPException(status_code=400, detail="Invalid ID")
+
+    query = {"_id": oid}
+    if user.get('role') != 'admin':
+        query["user_id"] = user['user_id']
+    
+    result = await travels_collection.delete_one(query)
+    if result.deleted_count == 0:
         raise HTTPException(status_code=404, detail="Travel not found")
     
-    db.delete(travel)
-    db.commit()
     return {"detail": "Travel deleted"}
 
 @app.get("/health")

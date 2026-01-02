@@ -21,6 +21,15 @@
             background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
         }
     </style>
+    <script>
+        window.onerror = function (msg, url, line, col, error) {
+            alert("Error: " + msg + "\nurl: " + url + "\nline: " + line);
+            return false;
+        };
+        window.addEventListener('unhandledrejection', function (event) {
+            alert("Unhandled Rejection: " + event.reason);
+        });
+    </script>
 </head>
 
 <body class="bg-gray-50 text-gray-800 antialiased min-h-screen flex flex-col">
@@ -102,8 +111,6 @@
                         Account</button>
                 </div>
                 <div class="mt-6 text-center">
-                    <p class="text-sm text-gray-600">Already have an account? <a href="#login"
-                            class="text-indigo-600 font-semibold hover:underline">Log in</a></p>
                 </div>
             </div>
         </div>
@@ -122,6 +129,18 @@
                         class="inline-flex items-center px-6 py-3 border border-transparent text-base font-medium rounded-full shadow-sm text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 transition">
                         + New Trip
                     </button>
+                </div>
+            </div>
+
+            <!-- Recommendations Section -->
+            <div class="mb-12">
+                <h2 class="text-2xl font-bold text-gray-900 mb-4">✨ Recommended for You</h2>
+                <div id="recommendation-list" class="flex space-x-4 overflow-x-auto pb-4">
+                    <!-- Recommendations injected here -->
+                    <div
+                        class="flex-shrink-0 w-64 h-40 bg-gray-100 rounded-xl flex items-center justify-center text-gray-400">
+                        Loading...
+                    </div>
                 </div>
             </div>
 
@@ -169,6 +188,66 @@
                     <button type="button"
                         onclick="document.getElementById('create-travel-modal').classList.add('hidden')"
                         class="mt-3 w-full inline-flex justify-center rounded-md border border-gray-300 shadow-sm px-4 py-2 bg-white text-base font-medium text-gray-700 hover:bg-gray-50 focus:outline-none sm:mt-0 sm:ml-3 sm:w-auto sm:text-sm">Cancel</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Recommendation Details Modal -->
+    <div id="recommendation-modal" class="fixed inset-0 z-50 hidden overflow-y-auto" aria-labelledby="modal-title"
+        role="dialog" aria-modal="true">
+        <div class="flex items-center justify-center min-h-screen pt-4 px-4 pb-20 text-center sm:block sm:p-0">
+            <div class="fixed inset-0 bg-gray-900 bg-opacity-75 transition-opacity" aria-hidden="true"
+                onclick="closeRecommendationModal()"></div>
+            <span class="hidden sm:inline-block sm:align-middle sm:h-screen" aria-hidden="true">&#8203;</span>
+            <div
+                class="inline-block align-bottom bg-white rounded-2xl text-left overflow-hidden shadow-2xl transform transition-all sm:my-8 sm:align-middle sm:max-w-2xl sm:w-full">
+                <div class="relative">
+                    <img id="rec-modal-image" src="" alt="Travel Destination" class="w-full h-64 object-cover">
+                    <div class="absolute top-0 right-0 p-4">
+                        <button onclick="closeRecommendationModal()"
+                            class="bg-white rounded-full p-2 shadow-lg hover:bg-gray-100 transition">
+                            <svg class="w-6 h-6 text-gray-900" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                    d="M6 18L18 6M6 6l12 12"></path>
+                            </svg>
+                        </button>
+                    </div>
+                    <div class="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black to-transparent p-6">
+                        <h3 id="rec-modal-title" class="text-3xl font-bold text-white"></h3>
+                        <p id="rec-modal-country" class="text-indigo-200 font-medium text-lg"></p>
+                    </div>
+                </div>
+                <div class="px-6 py-6">
+                    <div class="flex items-center justify-between mb-6">
+                        <div
+                            class="bg-indigo-50 text-indigo-700 px-4 py-2 rounded-full text-sm font-bold flex items-center">
+                            <span class="mr-2">✨ Match Score</span>
+                            <span id="rec-modal-score" class="text-lg"></span>
+                        </div>
+                        <div class="text-sm text-gray-500">
+                            Recommended by <span id="rec-modal-author" class="font-medium text-gray-900"></span>
+                        </div>
+                    </div>
+
+                    <div class="mb-6">
+                        <h4 class="text-sm font-bold text-gray-900 uppercase tracking-wide mb-2">Why Recommended?</h4>
+                        <div class="bg-green-50 border border-green-100 rounded-lg p-4">
+                            <p id="rec-modal-reason" class="text-green-800 font-medium"></p>
+                        </div>
+                    </div>
+
+                    <div class="mb-6">
+                        <h4 class="text-sm font-bold text-gray-900 uppercase tracking-wide mb-2">About</h4>
+                        <p id="rec-modal-desc" class="text-gray-600 leading-relaxed"></p>
+                    </div>
+
+                    <div class="flex justify-end">
+                        <button onclick="closeRecommendationModal()"
+                            class="w-full sm:w-auto bg-gray-100 text-gray-700 font-bold py-3 px-6 rounded-xl hover:bg-gray-200 transition">
+                            Close
+                        </button>
+                    </div>
                 </div>
             </div>
         </div>
@@ -229,7 +308,7 @@
         </div>
     </div>
 
-    <script src="app.js"></script>
+    <script type="module" src="js/app.js"></script>
 </body>
 
 </html>

@@ -1,7 +1,7 @@
 # ✈️ MSA Travel Itinerary Platform (여행 일정 관리 플랫폼)
 
 **MSA Travel Itinerary Platform**은 마이크로서비스 아키텍처(Microservices Architecture)를 기반으로 설계된 현대적인 여행 일정 관리 웹 애플리케이션입니다.
-사용자는 직관적인 **프리미엄 UI**를 통해 여행 계획을 세우고, 관리자는 **전용 대시보드**를 통해 플랫폼을 관리할 수 있습니다.
+사용자는 직관적인 **UI**를 통해 여행 계획을 세우고, 관리자는 **전용 대시보드**를 통해 플랫폼을 관리할 수 있습니다.
 
 ---
 
@@ -22,26 +22,6 @@ graph TD
         Travel -->|Read/Write| DB
         Schedule -->|Read/Write| DB
         
-        Travel -.->|Verify Token| Auth
-        Schedule -.->|Verify Token| Auth
-        Schedule -.->|Verify Ownership| Travel
-    end
-```
-
-### 🧩 핵심 컴포넌트
-1.  **Frontend (Nginx + Vanilla JS)**:
-    *   단일 페이지 애플리케이션(SPA)으로, 부드러운 사용자 경험을 제공합니다.
-    *   Nginx가 정적 파일을 서빙함과 동시에 **API Gateway** 역할을 수행하여 백엔드 서비스로 트래픽을 라우팅합니다.
-2.  **Backend Microservices**:
-    *   **Auth Service**: 사용자 인증(JWT 발급), 회원가입, 관리자 기능을 담당합니다.
-    *   **Travel Service**: 여행지(Trip)의 생성, 조회, 삭제를 관리합니다.
-    *   **Schedule Service**: 각 여행지의 세부 일정(Activity)을 관리합니다.
-3.  **Database (MySQL)**:
-    *   모든 서비스가 공유하는 데이터베이스로, 서비스별로 테이블이 논리적으로 분리되어 있습니다 (`users`, `travels`, `schedules`).
-
----
-
-## ✨ 주요 기능 (Features)
 
 ### 👤 일반 사용자 (User)
 *   **보안 로그인**: JWT(JSON Web Token) 기반의 안전한 인증 시스템.

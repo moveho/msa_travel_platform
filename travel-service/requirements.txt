@@ -1,6 +1,6 @@
 fastapi
 uvicorn
-sqlalchemy
-pymysql
+motor
 python-jose[cryptography]
 requests
+aiokafka
