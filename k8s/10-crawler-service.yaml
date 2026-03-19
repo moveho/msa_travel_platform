@@ -1,0 +1,20 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: crawler-service
+spec:
+  selector:
+    matchLabels:
+      app: crawler-service
+  template:
+    metadata:
+      labels:
+        app: crawler-service
+    spec:
+      containers:
+      - name: crawler-service
+        image: msa-crawler-service:latest
+        imagePullPolicy: IfNotPresent
+        envFrom:
+        - configMapRef:
+            name: msa-config

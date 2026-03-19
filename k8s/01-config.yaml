@@ -1,0 +1,20 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: msa-config
+data:
+  MONGO_URL: "mongodb://user:password@mongodb:27017"
+  USER_SERVICE_URL: "http://user-service:8000"
+  AUTH_SERVICE_URL: "http://auth-service:8000/verify"
+  TRAVEL_SERVICE_URL: "http://travel-service:8000/travels"
+  KAFKA_BOOTSTRAP_SERVERS: "kafka:9092"
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: msa-secret
+type: Opaque
+stringData:
+  JWT_SECRET: "mysecretkey"
+  JWT_ALGORITHM: "HS256"
+  ACCESS_TOKEN_EXPIRE_MINUTES: "30"

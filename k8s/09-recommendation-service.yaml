@@ -1,0 +1,51 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: recommendation-service
+spec:
+  selector:
+    matchLabels:
+      app: recommendation-service
+  template:
+    metadata:
+      labels:
+        app: recommendation-service
+    spec:
+      containers:
+      - name: recommendation-service
+        image: msa-recommendation-service:latest
+        imagePullPolicy: IfNotPresent
+        ports:
+        - containerPort: 8000
+        envFrom:
+        - configMapRef:
+            name: msa-config
+        volumeMounts:
+        - name: recommended-images
+          mountPath: /app/images
+      volumes:
+      - name: recommended-images
+        persistentVolumeClaim:
+          claimName: image-pvc
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: image-pvc
+spec:
+  accessModes:
+    - ReadWriteMany
+  resources:
+    requests:
+      storage: 1Gi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: recommendation-service
+spec:
+  selector:
+    app: recommendation-service
+  ports:
+    - port: 8000
+      targetPort: 8000
