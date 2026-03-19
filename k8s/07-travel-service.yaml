@@ -1,0 +1,33 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: travel-service
+spec:
+  selector:
+    matchLabels:
+      app: travel-service
+  template:
+    metadata:
+      labels:
+        app: travel-service
+    spec:
+      containers:
+      - name: travel-service
+        image: msa-travel-service:latest
+        imagePullPolicy: IfNotPresent
+        ports:
+        - containerPort: 8000
+        envFrom:
+        - configMapRef:
+            name: msa-config
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: travel-service
+spec:
+  selector:
+    app: travel-service
+  ports:
+    - port: 8000
+      targetPort: 8000

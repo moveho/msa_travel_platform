@@ -119,12 +119,45 @@ cp .env.example .env
 # .env 파일에서 JWT_SECRET 등 수정
 
 # 3. Docker Compose 실행
+cd docker-compose
 docker compose up --build -d
 
 # 4. 서비스 확인
 docker compose ps
 
 # 5. 브라우저 접속
+http://localhost:8080
+```
+
+### ⛵ Kubernetes로 실행 (K8s)
+
+```bash
+# 1. k8s 클러스터 환경 구성 (Kind 사용)
+kind create cluster --config kind-config.yaml
+
+# 2. 도커 이미지 빌드 (로컬 테스트용)
+cd k8s
+docker compose -f ../docker-compose/docker-compose.yml build # k8s 매니페스트 배포를 위해 임시로 빌드하거나, k8s 내부 Dockerfile 자체 빌드
+# 현재 소스코드 기반으로 빌드를 수행하려면 k8s 하위 디렉토리에서 각각 docker build 를 직접 실행할 수 있습니다.
+# 예: docker build -t msa-user-service:latest ./user-service
+
+# (선택) 빌드된 이미지를 kind 클러스터 내부로 로드
+kind load docker-image msa-user-service:latest \
+  msa-auth-service:latest msa-travel-service:latest \
+  msa-schedule-service:latest msa-recommendation-service:latest \
+  msa-crawler-service:latest msa-frontend:latest --name msa-cluster
+
+# 3. k8s 매니페스트 배포
+cd ../k8s
+kubectl apply -f .
+
+# 4. 파드 상태 확인
+kubectl get pods
+
+# 5. 프론트엔드 포트포워딩
+kubectl port-forward svc/frontend 8080:80
+
+# 6. 브라우저 접속
 http://localhost:8080
 ```
 
@@ -152,24 +185,36 @@ docker compose logs
 
 ```
 msa_travel_platform/
-├── auth-service/          # JWT 인증
-├── user-service/          # 사용자 관리
-├── travel-service/        # 여행 계획
-├── schedule-service/      # 일정 관리
-├── recommendation-service/ # 추천 엔진
-├── crawler-service/       # Wikipedia 크롤러
-├── frontend/
-│   ├── public/
-│   │   ├── index.html
-│   │   └── js/
-│   │       ├── app.js
-│   │       ├── auth.js
-│   │       ├── travel.js
-│   │       └── schedule.js
-│   └── nginx.conf
-├── image/
-│   └── recommended_image/  # 31개 국가 이미지
-└── docker-compose.yml
+├── docker-compose/
+│   ├── auth-service/          # JWT 인증 소스
+│   ├── user-service/          # 사용자 관리 소스
+│   ├── travel-service/        # 여행 계획 소스
+│   ├── schedule-service/      # 일정 관리 소스
+│   ├── recommendation-service/# 추천 엔진 소스
+│   ├── crawler-service/       # Wikipedia 크롤러 소스
+│   ├── frontend/              # 프론트엔드 소스
+│   ├── image/                 # 이미지 파일
+│   └── docker-compose.yml     # Docker Compose 설정
+└── k8s/
+    ├── auth-service/          # (k8s 실습용 독립 소스)
+    ├── user-service/          # (k8s 실습용 독립 소스)
+    ├── travel-service/        # (k8s 실습용 독립 소스)
+    ├── schedule-service/      # (k8s 실습용 독립 소스)
+    ├── recommendation-service/# (k8s 실습용 독립 소스)
+    ├── crawler-service/       # (k8s 실습용 독립 소스)
+    ├── frontend/              # (k8s 실습용 독립 소스)
+    ├── image/                 # (k8s 실습용 독립 볼륨 데이터)
+    ├── 01-config.yaml         # ConfigMap 및 Secret
+    ├── 02-mongodb.yaml        # MongoDB 배포
+    ├── 03-zookeeper.yaml      # Zookeeper 배포
+    ├── 04-kafka.yaml          # Kafka 배포
+    ├── 05-user-service.yaml   # User 서비스 배포
+    ├── 06-auth-service.yaml   # Auth 서비스 배포
+    ├── 07-travel-service.yaml # Travel 서비스 배포
+    ├── 08-schedule-service.yaml # Schedule 서비스 배포
+    ├── 09-recommendation-service.yaml # Recommendation 서비스 배포
+    ├── 10-crawler-service.yaml # Crawler 서비스 배포
+    └── 11-frontend.yaml       # Frontend 배포
 ```
 
 ---
