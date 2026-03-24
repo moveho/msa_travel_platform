@@ -129,37 +129,84 @@ docker compose ps
 http://localhost:8080
 ```
 
-### ⛵ Kubernetes로 실행 (K8s)
+### ⛵ Kubernetes로 실행 (k3s / WSL2)
+
+> **환경**: Ubuntu 24.04 LTS (WSL2) + k3s
+
+#### 1단계. 사전 준비 (최초 1회)
 
 ```bash
-# 1. k8s 클러스터 환경 구성 (Kind 사용)
-kind create cluster --config kind-config.yaml
+# WSL2 inotify 한도 증가 — Kafka 기동에 필수
+sudo sysctl -w fs.inotify.max_user_instances=512
 
-# 2. 도커 이미지 빌드 (로컬 테스트용)
-cd k8s
-docker compose -f ../docker-compose/docker-compose.yml build # k8s 매니페스트 배포를 위해 임시로 빌드하거나, k8s 내부 Dockerfile 자체 빌드
-# 현재 소스코드 기반으로 빌드를 수행하려면 k8s 하위 디렉토리에서 각각 docker build 를 직접 실행할 수 있습니다.
-# 예: docker build -t msa-user-service:latest ./user-service
-
-# (선택) 빌드된 이미지를 kind 클러스터 내부로 로드
-kind load docker-image msa-user-service:latest \
-  msa-auth-service:latest msa-travel-service:latest \
-  msa-schedule-service:latest msa-recommendation-service:latest \
-  msa-crawler-service:latest msa-frontend:latest --name msa-cluster
-
-# 3. k8s 매니페스트 배포
-cd ../k8s
-kubectl apply -f .
-
-# 4. 파드 상태 확인
-kubectl get pods
-
-# 5. 프론트엔드 포트포워딩
-kubectl port-forward svc/frontend 8080:80
-
-# 6. 브라우저 접속
-http://localhost:8080
+# 재부팅 후에도 유지
+echo "fs.inotify.max_user_instances=512" | sudo tee -a /etc/sysctl.conf
 ```
+
+#### 2단계. Docker 이미지 빌드 및 k3s import
+
+k3s는 Docker 데몬과 별도의 containerd를 사용하므로, `docker build` 후 반드시 `k3s ctr images import`로 가져와야 합니다.
+
+```bash
+cd msa_travel_platform
+
+declare -A SERVICES=(
+  ["user-service"]="msa-user-service:latest"
+  ["auth-service"]="msa-auth-service:latest"
+  ["travel-service"]="msa-travel-service:latest"
+  ["schedule-service"]="msa-schedule-service:latest"
+  ["recommendation-service"]="msa-recommendation-service:latest"
+  ["crawler-service"]="msa-crawler-service:latest"
+  ["frontend"]="msa-frontend:latest"
+)
+
+for svc in "${!SERVICES[@]}"; do
+  docker build -t "${SERVICES[$svc]}" ./docker-compose/$svc
+  docker save "${SERVICES[$svc]}" | sudo k3s ctr images import -
+done
+```
+
+또는 스크립트로 한 번에:
+
+```bash
+bash k8s/setup-k3s.sh build
+```
+
+#### 3단계. 매니페스트 배포
+
+```bash
+cd k8s
+kubectl apply -f 01-config.yaml
+kubectl apply -f 02-mongodb.yaml
+kubectl apply -f 03-zookeeper.yaml
+kubectl apply -f 04-kafka.yaml
+kubectl apply -f 05-user-service.yaml
+kubectl apply -f 06-auth-service.yaml
+kubectl apply -f 07-travel-service.yaml
+kubectl apply -f 08-schedule-service.yaml
+kubectl apply -f 09-recommendation-service.yaml
+kubectl apply -f 10-crawler-service.yaml
+kubectl apply -f 11-frontend.yaml
+
+# 파드 상태 확인 (모두 Running이 될 때까지 대기, 약 1~2분 소요)
+kubectl get pods
+```
+
+#### 4단계. 브라우저 접속
+
+WSL2는 별도의 가상 네트워크에서 실행되므로 Windows 브라우저에서 `localhost`가 아닌 **WSL2 IP**로 접속해야 합니다.
+
+```bash
+# WSL2 IP 확인
+ip addr show eth0 | grep 'inet '
+# 예: inet 172.25.32.71/20
+```
+
+```
+http://<WSL2_IP>:30080
+```
+
+> WSL2 IP는 재시작할 때마다 변경될 수 있으므로 매번 확인이 필요합니다.
 
 ### 서비스 재시작
 ```bash
@@ -306,22 +353,81 @@ docker exec -it msa_travel_platform-mongodb-1 mongosh -u user -p password
 
 ## 🐛 트러블슈팅
 
-### 컨테이너가 시작되지 않을 때
+### Docker Compose
+
+#### 컨테이너가 시작되지 않을 때
 ```bash
 docker compose down
 docker compose up --build --force-recreate
 ```
 
-### MongoDB 초기화
+#### MongoDB 초기화
 ```bash
 docker volume rm msa_travel_platform_mongo_data
 docker compose up -d mongodb
 ```
 
-### Kafka 연결 오류
+#### Kafka 연결 오류
 ```bash
-# Kafka 재시작
 docker compose restart kafka zookeeper
+```
+
+---
+
+### Kubernetes (k3s / WSL2)
+
+#### Kafka CrashLoopBackOff — `too many open files`
+
+WSL2의 inotify 인스턴스 기본값(128)이 부족하여 발생합니다.
+
+```bash
+sudo sysctl -w fs.inotify.max_user_instances=512
+kubectl rollout restart deployment/kafka
+```
+
+#### Kafka CrashLoopBackOff — `port is deprecated`
+
+Kubernetes가 `kafka` 서비스의 `KAFKA_PORT` 환경변수를 파드에 자동 주입하면, Confluent 이미지의 시작 스크립트가 이를 deprecated 변수로 인식하고 종료합니다. `04-kafka.yaml`의 파드 스펙에 `enableServiceLinks: false`가 설정되어 있는지 확인하세요.
+
+```yaml
+# k8s/04-kafka.yaml
+spec:
+  template:
+    spec:
+      enableServiceLinks: false   # 이 설정이 있어야 합니다
+```
+
+#### 여행 생성 504 Gateway Timeout
+
+Kafka가 다운된 상태에서 travel-service가 먼저 기동되면, Kafka producer 연결이 실패한 채로 남아 이후 요청이 블로킹됩니다. Kafka 정상화 후 재시작하세요.
+
+```bash
+kubectl rollout restart deployment/travel-service
+```
+
+#### Windows 브라우저에서 `localhost:30080` 접속 불가
+
+WSL2는 NAT 기반 가상 네트워크를 사용하므로 Windows의 `localhost`가 WSL2 내부에 도달하지 않습니다. WSL2 IP로 접속하세요.
+
+```bash
+ip addr show eth0 | grep 'inet '
+# 출력된 IP로 접속: http://<WSL2_IP>:30080
+```
+
+#### 재시작 후 Kafka 재기동 순서
+
+```bash
+# 1. inotify 재적용 (/etc/sysctl.conf 설정 시 자동 적용됨)
+sudo sysctl -w fs.inotify.max_user_instances=512
+
+# 2. 파드 상태 확인
+kubectl get pods
+
+# 3. kafka가 오류 상태이면 재시작
+kubectl rollout restart deployment/kafka
+
+# 4. kafka 정상화 후 travel-service 재시작
+kubectl rollout restart deployment/travel-service
 ```
 
 ---
