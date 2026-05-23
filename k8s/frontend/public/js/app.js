@@ -64,7 +64,7 @@ async function renderRecommendations() {
     list.innerHTML = recs.map(r => `
         <div onclick="openRecommendationModal('${r.id}')" class="flex-shrink-0 w-72 bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden hover:shadow-lg transition cursor-pointer transform hover:-translate-y-1">
             <div class="h-40 bg-gray-200 relative">
-                <img src="${r.imageUrl || 'https://via.placeholder.com/300x200'}" alt="${r.title}" class="w-full h-full object-cover">
+                <img src="${r.imageUrl}" alt="${r.title}" class="w-full h-full object-cover" onerror="this.src='/api/recommendation/images/default'">
                 <div class="absolute top-2 right-2 bg-white/90 backdrop-blur-sm px-2 py-1 rounded-lg text-xs font-bold text-indigo-600 shadow-sm">
                     ${Math.round(r.totalScore)} pts
                 </div>
@@ -85,7 +85,8 @@ window.openRecommendationModal = (id) => {
     const rec = window.currentRecommendations.find(r => r.id === id);
     if (!rec) return;
 
-    document.getElementById('rec-modal-image').src = rec.imageUrl || 'https://via.placeholder.com/600x400';
+    document.getElementById('rec-modal-image').src = rec.imageUrl;
+    document.getElementById('rec-modal-image').onerror = () => { document.getElementById('rec-modal-image').src = '/api/recommendation/images/default'; };
     document.getElementById('rec-modal-title').textContent = rec.title;
     document.getElementById('rec-modal-country').textContent = rec.country;
     document.getElementById('rec-modal-score').textContent = Math.round(rec.totalScore);

@@ -72,7 +72,6 @@ build_and_import_images() {
     ["auth-service"]="msa-auth-service:latest"
     ["travel-service"]="msa-travel-service:latest"
     ["schedule-service"]="msa-schedule-service:latest"
-    ["recommendation-service"]="msa-recommendation-service:latest"
     ["crawler-service"]="msa-crawler-service:latest"
     ["frontend"]="msa-frontend:latest"
   )
@@ -94,6 +93,16 @@ build_and_import_images() {
 
     success "$tag 완료"
   done
+
+  # recommendation-service는 이미지 파일 포함을 위해 k8s/ 를 빌드 컨텍스트로 사용
+  info "빌드 중: msa-recommendation-service:latest (from $K8S_DIR)"
+  docker build -t "msa-recommendation-service:latest" \
+    -f "$K8S_DIR/recommendation-service/Dockerfile" \
+    "$K8S_DIR"
+
+  info "k3s containerd로 import 중: msa-recommendation-service:latest"
+  docker save "msa-recommendation-service:latest" | sudo k3s ctr images import -
+  success "msa-recommendation-service:latest 완료"
 }
 
 # --------------------------------------------------------------
