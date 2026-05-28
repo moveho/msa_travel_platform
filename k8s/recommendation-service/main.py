@@ -46,44 +46,21 @@ async def consume_travels():
             data = json.loads(msg.value.decode("utf-8"))
             
             if msg.topic == "external-travel-topic":
-                # Save external data to 'destinations' for recommendation engine
-                # Check for duplicates based on country (not title)
-                existing = await db["destinations"].find_one({"country": data["country"], "source": "External Crawler"})
+                # Check for duplicates based on city + country
+                existing = await db["destinations"].find_one({
+                    "city": data.get("city", data.get("title")),
+                    "source": "External Crawler"
+                })
                 if not existing:
-                    # MATCH IMAGE FROM CACHE
-                    country = data.get("country", "")
-                    normalized_key = country.lower().replace(" ", "")
-                    
-                    # Check Aliases first
-                    # Remove brackets if any (e.g. "Country [1]") - though crawler does this too
-                    
-                    # Aliases for file matching
-                    # Files: Turkey.jfif, usa.jfif, UAE.jfif, United Kingdom.jfif
-                    ALIASES = {
-                        "unitedstates": "usa",
-                        "america": "usa",
-                        "unitedarabemirates": "uae",
-                        "uk": "unitedkingdom",
-                        "britain": "unitedkingdom",
-                        "korea": "southkorea",
-                        # Turkey is "turkey" in file, so no alias needed if crawler sends "Turkey"
-                    }
-                    
-                    mapped_key = ALIASES.get(normalized_key, normalized_key)
-                    
-                    if mapped_key in IMAGE_CACHE:
-                        data["image_data"] = IMAGE_CACHE[mapped_key]
-                        print(f"Matched image cache for new crawl: {country} -> {mapped_key}")
-                    else:
-                        # Use DEFAULT image fallback
-                        if "default" in IMAGE_CACHE:
-                            data["image_data"] = IMAGE_CACHE["default"]
-                            print(f"Using default image for: {country} (key: {mapped_key})")
-                        else:
-                            print(f"WARNING: No image found in cache for: {country} (key: {mapped_key})")
-
                     await db["destinations"].insert_one(data)
-                    print(f"Crawled & Saved: {data['title']}")
+                    print(f"Crawled & Saved: {data['title']} (image: {'yes' if data.get('image_url') else 'none'})")
+                elif not existing.get("image_url") and data.get("image_url"):
+                    # Backfill image_url for existing records that were saved without one
+                    await db["destinations"].update_one(
+                        {"_id": existing["_id"]},
+                        {"$set": {"image_url": data["image_url"]}}
+                    )
+                    print(f"Updated image for: {data['title']}")
                 else:
                     print(f"Skipped duplicate: {data['title']}")
             
@@ -105,64 +82,23 @@ async def consume_travels():
 @app.on_event("startup")
 async def startup_event():
     asyncio.create_task(consume_travels())
-    # Seed Images from Volume
+    # Load local fallback images into cache (for /images/{country} endpoint)
     try:
         import glob
         image_files = glob.glob("/app/images/*.jfif")
-        print(f"Server Startup: Found {len(image_files)} images to seed.")
-        
-        # 1. Load all images into a dictionary keyed by normalized name
+        print(f"Server Startup: Found {len(image_files)} local fallback images.")
+
         global IMAGE_CACHE
-        IMAGE_CACHE = {} 
-        original_names = {}
-        
+        IMAGE_CACHE = {}
         for file_path in image_files:
             filename = os.path.basename(file_path).replace(".jfif", "")
-            # Normalize: lower + remove spaces
             normalized_key = filename.lower().replace(" ", "")
-            
             with open(file_path, "rb") as f:
-                data = f.read()
-                IMAGE_CACHE[normalized_key] = data
-                original_names[normalized_key] = filename
+                IMAGE_CACHE[normalized_key] = f.read()
 
-        # 2. Iterate ALL destinations and try to match
-        cursor = db["destinations"].find({})
-        async for doc in cursor:
-            country_name = doc.get("country", "")
-            # Normalize DB country
-            normalized_key = country_name.lower().replace(" ", "")
-            
-            # Aliases (Sync with consumer)
-            ALIASES = {
-                "unitedstates": "usa",
-                "america": "usa",
-                "unitedarabemirates": "uae",
-                "uk": "unitedkingdom",
-                "britain": "unitedkingdom",
-                "korea": "southkorea"
-            }
-            mapped_key = ALIASES.get(normalized_key, normalized_key)
-
-            if mapped_key in IMAGE_CACHE:
-                # Update DB only if image missing or explicitly re-seeding
-                # For robustness, let's update if image_data is missing
-                if "image_data" not in doc: 
-                    await db["destinations"].update_one(
-                        {"_id": doc["_id"]},
-                        {"$set": {"image_data": IMAGE_CACHE[mapped_key]}}
-                    )
-                    print(f"Mapped image for: {country_name} -> {mapped_key}")
-        
-        # Global Cleanup: Remove legacy 'imageUrl' field from ALL documents
-        await db["destinations"].update_many(
-            {"imageUrl": {"$exists": True}},
-            {"$unset": {"imageUrl": ""}}
-        )
-        print("Cleaned up legacy imageUrl fields.")
-            
+        print(f"Image cache loaded: {list(IMAGE_CACHE.keys())}")
     except Exception as e:
-        print(f"Image seeding failed: {e}")
+        print(f"Image cache load failed: {e}")
 
 @app.on_event("shutdown")
 async def shutdown_event():
@@ -265,16 +201,15 @@ async def get_recommendations(
         
         reason = ". ".join(reason_parts) if reason_parts else "A highly popular destination."
 
-        # Dynamic Image URL served from DB
-        # /api/recommendation is mapped to this service
-        image_url = f"/api/recommendation/images/{doc['country']}"
+        # Prefer Wikipedia image URL; fall back to local image proxy
+        image_url = doc.get("image_url") or f"/api/recommendation/images/{doc['country']}"
 
         recs.append({
             "id": str(doc["_id"]),
-            "title": doc["title"],
+            "title": doc.get("city") or doc["title"],
             "country": doc["country"],
             "description": doc["description"],
-            "imageUrl": image_url, 
+            "imageUrl": image_url,
             "totalScore": doc["totalScore"],
             "reason": reason,
             "author": "System"

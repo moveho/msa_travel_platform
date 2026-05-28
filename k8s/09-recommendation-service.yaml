@@ -20,24 +20,6 @@ spec:
         envFrom:
         - configMapRef:
             name: msa-config
-        volumeMounts:
-        - name: recommended-images
-          mountPath: /app/images
-      volumes:
-      - name: recommended-images
-        persistentVolumeClaim:
-          claimName: image-pvc
----
-apiVersion: v1
-kind: PersistentVolumeClaim
-metadata:
-  name: image-pvc
-spec:
-  accessModes:
-    - ReadWriteOnce
-  resources:
-    requests:
-      storage: 1Gi
 ---
 apiVersion: v1
 kind: Service
